@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+/.env
+/.env.local
+/storage/
+.idea/
+/.vscode/
+composer.lock
+npm-debug.log
+.DS_Store
+Thumbs.db
