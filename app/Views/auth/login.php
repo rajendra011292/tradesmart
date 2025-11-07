@@ -1,37 +1,39 @@
+<?php use App\Core\Csrf; ?>
 <?php
-use App\Core\Csrf;
+$old = $old ?? [];
+$errors = $errors ?? [];
+$h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Login - TradeSmart</title>
-</head>
-<body>
-  <h2>Login</h2>
+<h1 class="text-2xl font-bold mb-4">Login</h1>
 
-  <?php if (!empty($error)): ?>
-    <div style="color:crimson; margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div>
+<form method="POST" class="space-y-4 max-w-md">
+  <?php Csrf::inputField(); ?>
+
+  <?php if (!empty($errors['auth'])): ?>
+    <div class="bg-red-50 border border-red-200 text-red-800 rounded px-4 py-2 text-sm">
+      <?= $h($errors['auth']) ?>
+    </div>
   <?php endif; ?>
 
-  <form method="POST" action="/login" autocomplete="off">
-    <?php Csrf::inputField(); ?>
+  <div>
+    <label class="block text-sm">Email</label>
+    <input type="email" name="email" class="mt-1 w-full border rounded px-3 py-2"
+           value="<?= $h($old['email'] ?? '') ?>" required>
+    <?php if (!empty($errors['email'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['email']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <label>
-      Email<br>
-      <input type="email" name="email" required>
-    </label>
-    <br><br>
+  <div>
+    <label class="block text-sm">Password</label>
+    <input type="password" name="password" class="mt-1 w-full border rounded px-3 py-2" required>
+    <?php if (!empty($errors['password'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['password']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <label>
-      Password<br>
-      <input type="password" name="password" required>
-    </label>
-    <br><br>
-
-    <button type="submit">Login</button>
-  </form>
-
-  <p>No account? <a href="/register">Register</a></p>
-</body>
-</html>
+  <div class="flex items-center gap-3">
+    <button class="px-4 py-2 bg-blue-600 text-white rounded">Login</button>
+    <a href="/register" class="text-sm text-gray-600 underline">Create an account</a>
+  </div>
+</form>

@@ -1,43 +1,50 @@
+<?php use App\Core\Csrf; ?>
 <?php
-use App\Core\Csrf;
+$old = $old ?? [];
+$errors = $errors ?? [];
+$h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Register - TradeSmart</title>
-</head>
-<body>
-  <h2>Register</h2>
+<h1 class="text-2xl font-bold mb-4">Register</h1>
 
-  <?php if (!empty($error)): ?>
-    <div style="color:crimson; margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div>
-  <?php endif; ?>
+<form method="POST" class="space-y-4 max-w-md">
+  <?php Csrf::inputField(); ?>
 
-  <form method="POST" action="/register" autocomplete="off">
-    <?php Csrf::inputField(); ?>
+  <div>
+    <label class="block text-sm">Name</label>
+    <input name="name" class="mt-1 w-full border rounded px-3 py-2"
+           value="<?= $h($old['name'] ?? '') ?>" required>
+    <?php if (!empty($errors['name'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['name']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <label>
-      Name<br>
-      <input type="text" name="name" required>
-    </label>
-    <br><br>
+  <div>
+    <label class="block text-sm">Email</label>
+    <input type="email" name="email" class="mt-1 w-full border rounded px-3 py-2"
+           value="<?= $h($old['email'] ?? '') ?>" required>
+    <?php if (!empty($errors['email'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['email']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <label>
-      Email<br>
-      <input type="email" name="email" required>
-    </label>
-    <br><br>
+  <div>
+    <label class="block text-sm">Password</label>
+    <input type="password" name="password" class="mt-1 w-full border rounded px-3 py-2" required>
+    <?php if (!empty($errors['password'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['password']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <label>
-      Password<br>
-      <input type="password" name="password" required>
-    </label>
-    <br><br>
+  <div>
+    <label class="block text-sm">Confirm Password</label>
+    <input type="password" name="password_confirmation" class="mt-1 w-full border rounded px-3 py-2" required>
+    <?php if (!empty($errors['password_confirmation'])): ?>
+      <div class="text-xs text-red-600 mt-1"><?= $h($errors['password_confirmation']) ?></div>
+    <?php endif; ?>
+  </div>
 
-    <button type="submit">Register</button>
-  </form>
-
-  <p>Already have an account? <a href="/login">Login</a></p>
-</body>
-</html>
+  <div class="flex items-center gap-3">
+    <button class="px-4 py-2 bg-emerald-600 text-white rounded">Create Account</button>
+    <a href="/login" class="text-sm text-gray-600 underline">Already have an account?</a>
+  </div>
+</form>

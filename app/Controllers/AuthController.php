@@ -1,85 +1,95 @@
 <?php
-
 namespace App\Controllers;
 
-use App\Core\Database;
 use App\Core\Csrf;
+use App\Core\Database;
+use App\Core\Flash;
+use App\Core\View;
 use PDO;
-use PDOException;
 
 class AuthController
 {
-    // Show register form (optionally with $error)
-    public function showRegister($error = null)
+    /* ---------- Views ---------- */
+
+    public function showRegister(array $old = [], array $errors = [])
     {
-        include __DIR__ . '/../Views/auth/register.php';
+        View::render('auth/register', [
+            'title'  => 'Register',
+            'old'    => $old,
+            'errors' => $errors,
+        ]);
     }
 
-    // Handle registration POST
+    public function showLogin(array $old = [], array $errors = [])
+    {
+        View::render('auth/login', [
+            'title'  => 'Login',
+            'old'    => $old,
+            'errors' => $errors,
+        ]);
+    }
+
+    /* ---------- Actions ---------- */
+
     public function register()
     {
-        // verify CSRF
         Csrf::requireValidToken($_POST['csrf_token'] ?? null);
 
-        // simple trimming + validation
-        $name = trim($_POST['name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $password = trim($_POST['password'] ?? '');
+        $name     = trim($_POST['name'] ?? '');
+        $email    = strtolower(trim($_POST['email'] ?? ''));
+        $password = $_POST['password'] ?? '';
+        $confirm  = $_POST['password_confirmation'] ?? '';
 
-        if ($name === '' || $email === '' || $password === '') {
-            $error = 'Please fill all required fields.';
-            include __DIR__ . '/../Views/auth/register.php';
+        $errors = [];
+
+        if ($name === '')   $errors['name'] = 'Name is required.';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Valid email required.';
+        if (strlen($password) < 6) $errors['password'] = 'Password must be at least 6 characters.';
+        if ($password !== $confirm) $errors['password_confirmation'] = 'Passwords do not match.';
+
+        if ($errors) {
+            $this->showRegister($_POST, $errors);
             return;
         }
-
-        $hashed = password_hash($password, PASSWORD_DEFAULT);
 
         $db = Database::getInstance()->getConnection();
 
-        try {
-            $stmt = $db->prepare("INSERT INTO users (name, email, password) VALUES (:name, :email, :password)");
-            $stmt->execute([
-                ':name' => $name,
-                ':email' => $email,
-                ':password' => $hashed
-            ]);
-
-            // registration successful — redirect to login
-            header('Location: /login');
-            exit;
-        } catch (PDOException $e) {
-            // detect duplicate email simple check (MySQL error code 1062)
-            if ($e->getCode() == 23000) {
-                $error = 'Email already registered.';
-            } else {
-                // for dev you can show $e->getMessage() but avoid in production
-                $error = 'Registration failed. Please try again.';
-            }
-            include __DIR__ . '/../Views/auth/register.php';
+        // Unique email check
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+        $stmt->execute([':email' => $email]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            $this->showRegister($_POST, ['email' => 'Email is already registered.']);
             return;
         }
+
+        // Create user
+        $stmt = $db->prepare("
+          INSERT INTO users (name, email, password, created_at, updated_at)
+          VALUES (:name, :email, :password, NOW(), NOW())
+        ");
+        $stmt->execute([':name'=>$name, ':email'=>$email, ':password'=>$password]);
+        $uid = (int)$db->lastInsertId();
+
+        // Log in the new user
+        $this->loginUser(['id'=>$uid, 'name'=>$name, 'email'=>$email]);
+
+        Flash::success('Welcome! Your account has been created.');
+        header('Location: /dashboard'); exit;
     }
 
-    // Show login form (optionally with $error)
-    public function showLogin($error = null)
-    {
-        include __DIR__ . '/../Views/auth/login.php';
-    }
-
-    // Handle login POST
     public function login()
     {
-        // verify CSRF
         Csrf::requireValidToken($_POST['csrf_token'] ?? null);
 
-        session_start();
+        $email    = strtolower(trim($_POST['email'] ?? ''));
+        $password = $_POST['password'] ?? '';
 
-        $email = trim($_POST['email'] ?? '');
-        $password = trim($_POST['password'] ?? '');
+        $errors = [];
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Valid email required.';
+        if ($password === '') $errors['password'] = 'Password is required.';
 
-        if ($email === '' || $password === '') {
-            $error = 'Please provide email and password.';
-            include __DIR__ . '/../Views/auth/login.php';
+        if ($errors) {
+            $this->showLogin($_POST, $errors);
             return;
         }
 
@@ -88,48 +98,44 @@ class AuthController
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($user && password_verify($password, $user['password'])) {
-            // set a minimal session user payload
-            $_SESSION['user'] = [
-                'id' => $user['id'],
-                'name' => $user['name'],
-                'email' => $user['email']
-            ];
-
-            // regenerate session id to prevent fixation
-            session_regenerate_id(true);
-
-            $redirect = $_SESSION['intended_url'] ?? '/dashboard';
-            unset($_SESSION['intended_url']);
-            header('Location: ' . $redirect);
-            exit;
-        } else {
-            $error = 'Invalid credentials.';
-            include __DIR__ . '/../Views/auth/login.php';
+        if (!$user || !password_verify($password, $user['password'])) {
+            $this->showLogin(['email'=>$email], ['auth' => 'Invalid email or password.']);
             return;
         }
+
+        $this->loginUser($user);
+
+        Flash::success('Logged in successfully.');
+        header('Location: /dashboard'); exit;
     }
 
     public function logout()
     {
-        session_start();
-        // Unset and destroy session
+        // Clear session safely
+        if (session_status() !== PHP_SESSION_ACTIVE) session_start();
         $_SESSION = [];
-        if (ini_get("session.use_cookies")) {
+        if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();
-            setcookie(
-                session_name(),
-                '',
-                time() - 42000,
-                $params["path"],
-                $params["domain"],
-                $params["secure"],
-                $params["httponly"]
-            );
+            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
         }
         session_destroy();
 
-        header('Location: /login');
-        exit;
+        // Start a fresh session to carry the flash
+        session_start();
+        Flash::info('You have been logged out.');
+        header('Location: /login'); exit;
+    }
+
+    /* ---------- Helpers ---------- */
+
+    private function loginUser(array $user): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+        session_regenerate_id(true); // prevent fixation
+        $_SESSION['user'] = [
+            'id'    => (int)$user['id'],
+            'name'  => $user['name'] ?? '',
+            'email' => $user['email'] ?? '',
+        ];
     }
 }
